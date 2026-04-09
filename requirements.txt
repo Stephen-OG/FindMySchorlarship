@@ -1,9 +1,9 @@
 requests
 python-dotenv
-gradio
+gradio>=4.0
 pypdf
 openai
-openai-agents
+openai-agents>=0.4.2
 aiohttp
 beautifulsoup4
 pydantic
@@ -11,3 +11,6 @@ lxml
 tqdm
 uvicorn
 serpapi
+aiosqlite
+redis
+playwright

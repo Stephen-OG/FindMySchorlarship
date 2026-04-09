@@ -1,3 +1,13 @@
+---
+title: FindMyScholarship AI
+emoji: 🎓
+colorFrom: blue
+colorTo: indigo
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # 🎓 FindMyScholarship AI
 
 FindMyScholarship AI is an agentic web application that helps students and researchers discover scholarships, funding opportunities, and grants for Master's and PhD programs by automatically searching and analysing official university websites.
@@ -47,12 +57,14 @@ Gradio Chat UI
 ```
 .
 ├── app.py                         # Gradio UI entry point
+├── Dockerfile                     # Hugging Face Docker Space runtime
 ├── requirements.txt               # Python dependencies
+├── utils/                         # Crawling, cache, search, analysis helpers
 ├── scholarship_agents/
 │   ├── schorlarship_agent.py      # Main agent orchestration
-│   ├── find_domain.py             # University domain discovery
-│   ├── crawler.py                 # Web crawler
-│   ├── analyzer.py                # Content analysis & summarisation
+│   ├── school_domain_agent.py     # University domain discovery agent
+│   ├── crawler_agent.py           # Crawling agent
+│   ├── analyzer_agent.py          # Funding analysis agent
 │   └── __init__.py
 ```
 
@@ -89,7 +101,7 @@ OPENAI_API_KEY=your_openai_key
 SERPAPI_API_KEY=your_serpapi_key
 ```
 
-⚠️ **Important:** When deploying to Hugging Face Spaces, do not use `.env`. Instead, set these values in **Space → Settings → Repository Secrets**.
+⚠️ **Important:** When deploying to Hugging Face Spaces, do not use `.env`. Instead, set these values in **Space → Settings → Variables and secrets**.
 
 ### 5️⃣ Run the app
 
@@ -101,21 +113,23 @@ Then open the local URL shown in the terminal.
 
 ## ☁️ Deployment (Hugging Face Spaces)
 
-This project is fully compatible with Hugging Face Spaces (Gradio SDK).
+This project is configured for a Hugging Face **Docker Space**.
 
 ### Steps:
 
-1. Create a new Space (`repo-type=space`, `sdk=gradio`)
-2. Upload:
+1. Create a new Space and choose **Docker** as the SDK.
+2. Push the full repository to the Space so it includes:
    * `app.py`
-   * `scholarship_agents/`
+   * `Dockerfile`
    * `requirements.txt`
-3. Add secrets:
+   * `scholarship_agents/`
+   * `utils/`
+3. In **Space → Settings → Variables and secrets**, add:
    * `OPENAI_API_KEY`
    * `SERPAPI_API_KEY`
-4. Restart the Space
+4. Restart the Space after adding or updating secrets.
 
-The app will be live within seconds.
+The Space will build the Docker image, install Chromium for Playwright, and then launch the app on port `7860`.
 
 ## 🛠 Tech Stack
 

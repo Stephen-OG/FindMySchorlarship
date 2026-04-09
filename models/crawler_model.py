@@ -18,6 +18,8 @@ class FundingPage(BaseModel):
     "Cleaned full page content used for downstream analysis"
     page_type: Optional[str] = None
     "Page classification label (e.g., funding_page)"
+    crawl_source: Optional[str] = None
+    "How the crawler discovered this page (e.g., seed, root, discovered)"
 
 
 class UniversityResult(BaseModel):
@@ -26,7 +28,11 @@ class UniversityResult(BaseModel):
     domain: str
     "The school's official domain"
     funding_pages: List[FundingPage]
-    "List of funding pages found"
+    "Primary list of crawled pages carried forward for downstream analysis"
+    candidate_pages: Optional[List[FundingPage]] = None
+    "Broader set of crawled candidate pages before final query-specific filtering"
+    filtered_funding_pages: Optional[List[FundingPage]] = None
+    "Final query-filtered funding pages retained for high-confidence presentation"
     summary: Optional[str] = None
     "Brief summary of funding opportunities at this university"
 

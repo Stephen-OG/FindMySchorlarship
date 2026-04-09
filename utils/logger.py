@@ -3,6 +3,7 @@ import sys
 
 LOGGER_NAME = "scholarship_finder"
 
+
 def get_logger():
     logger = logging.getLogger(LOGGER_NAME)
 
@@ -23,4 +24,4 @@ def get_logger():
 
 logger = get_logger()
 
-#logger.info(f"New chat message: {message}")
+# logger.info(f"New chat message: {message}")

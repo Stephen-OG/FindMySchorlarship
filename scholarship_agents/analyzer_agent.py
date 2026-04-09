@@ -1,8 +1,7 @@
-
 from agents import Agent, AgentOutputSchema
 
 from models.analyzer_model import AnalyzerResult
-from utils.analyzer import analyze_funding_page, analyze_funding_pages_batch
+from utils.analyzer import analyze_crawler_results
 from utils.constants import ANALYZER_INSTRUCTIONS
 from utils.logger import logger
 
@@ -15,7 +14,7 @@ analyzer_instructions = ANALYZER_INSTRUCTIONS
 analyzer_agent = Agent(
     name="Funding Analyzer",
     instructions=analyzer_instructions,
-    tools=[analyze_funding_pages_batch, analyze_funding_page],  # Batch function first, single page as fallback
+    tools=[analyze_crawler_results],
     model="gpt-4o-mini",
     output_type=AgentOutputSchema(AnalyzerResult, strict_json_schema=False),
 )

@@ -1,326 +1,509 @@
-# # scholarship_agents/schorlarship_agent.py
-# """
-# Main orchestrator agent for FindMyScholarship
-# Updated to pass user query to crawler for keyword extraction
-# """
-
-# from agents import Agent, Runner
-
-# from scholarship_agents.analyzer_agent import analyzer_agent
-# from scholarship_agents.crawler_agent import crawler_agent
-# from scholarship_agents.school_domain_agent import search_agent
-
-# #Convert sub-agents to tools
-# search_agent_tool = search_agent.as_tool(
-#     tool_name="university_domain_search",
-#     tool_description="Find university domains for given schools or research topics. Returns school names, user's query and their official domains.",
-# )
-
-
-# crawler_agent_tool = crawler_agent.as_tool(
-#     tool_name="crawl_universities",
-#     tool_description="""Crawl a single university website to discover funding opportunities with intelligent keyword extraction.
-    
-#     CRITICAL: Always provide BOTH parameters:
-#     1. university_domain: The domain to crawl (e.g., "https://mit.edu")
-#     2. user_query: The user's original search query for keyword extraction
-    
-#     The crawler will:
-#     - Extract relevant keywords from the query (degree level, field of study, location, etc.)
-#     - Prioritize pages containing those keywords
-#     - Score results by relevance to the query
-#     - Return structured funding opportunities with URLs, titles, and previews
-    
-#     Example usage:
-#     crawl_universities(
-#         university_domain="https://mit.edu",
-#         user_query="PhD funding in machine learning for international students"
-#     )
-    
-#     Call this tool separately for each university you want to search.
-    
-#     Returns: Funding pages found at that specific university, sorted by relevance score.
-#     """,
-# )
-
-# analyzer_agent_tool = analyzer_agent.as_tool(
-#     tool_name="analyze_funding_pages",
-#     tool_description="""Analyze crawled funding pages to extract structured information.
-    
-#     Takes raw page data from crawler and extracts:
-#     - Specific scholarship/funding names
-#     - Degree levels, fields, eligibility
-#     - Funding amounts and deadlines
-#     - Application process
-#     - Relevance to user's query
-    
-#     Call this AFTER crawling to get detailed, structured funding information.
-    
-#     Example: analyze_funding_pages(crawler_results=..., user_query="PhD in biology")
-#     """,
-# )
-
-# tools = [search_agent_tool, crawler_agent_tool, analyzer_agent_tool]
-
-# system_prompt = """
-# You are FindMyScholarship AI - an intelligent assistant that helps students discover funding opportunities.
-
-# APP WORKFLOW (3-STAGE PIPELINE):
-# 1. FIND DOMAINS: Use university_domain_search to get university websites
-#    - If user mentions specific universities, find only those
-#    - If user describes a topic, search for relevant universities
-
-# 2. CRAWL PAGES: Use crawl_universities to find funding pages
-#    - Always pass the user's original query
-#    - Crawl MAX 3-4 universities per call
-#    - This returns RAW page data (URLs, titles, text snippets)
-
-# 3. ANALYZE CONTENT: Use analyze_funding_pages to extract structured details
-#    - Pass the crawler results AND user query
-#    - This extracts specific scholarship names, amounts, deadlines, eligibility
-#    - Returns organized, detailed funding information
-
-# 4. PRESENT RESULTS: Show findings in a clear, helpful format
-
-# CONTEXT MANAGEMENT:
-# - Break large requests into batches (max 3-4 universities per crawl call)
-# - Always analyze the crawled results to get structured details
-# - The analyzer extracts specific information you can present clearly
-
-# RESPONSE FORMAT:
-# Present results by university with:
-# - University name and relevant funding pages
-# - Specific scholarship/funding names with details:
-#   * Degree level (PhD, Masters, etc.)
-#   * Funding amount (be specific: "£18,000/year" not just "funding")
-#   * Eligibility requirements
-#   * Deadlines (if available)
-#   * Link to apply
-# - Highlight the most relevant opportunities first
-# - Be encouraging and specific
-
-# EXAMPLE FLOW:
-# User: "PhD funding in computer science at MIT and Stanford"
-
-# 1. Search: university_domain_search("MIT", "Stanford")
-#    → Returns: ["https://mit.edu", "https://stanford.edu"]
-
-# 2. Crawl: crawl_universities(domains=[...], user_query="PhD funding in computer science at MIT and Stanford")
-#    → Returns: List of funding pages with URLs and text
-
-# 3. Analyze: analyze_funding_pages(crawler_results=..., user_query="PhD funding in computer science")
-#    → Returns: Structured details (names, amounts, deadlines, etc.)
-
-# 4. Present: Show specific opportunities with all relevant details
-
-# ALWAYS USE ALL THREE STAGES for complete results!
-# """
-
-
-# # Create main orchestrator agent
-# scholarship_agent = Agent(
-#     name="Scholarship Researcher",
-#     instructions=system_prompt,
-#     tools=tools,
-#     model="gpt-4o-mini",
-# )
-
-
-# async def chat(message, history):
-#     """
-#     Handles user input and previous chat history for FindMyScholarship AI.
-#     Compatible with Gradio list or dict chat history formats.
-#     """
-#     messages = [{"role": "system", "content": system_prompt}]
-
-#     # Process history
-#     for turn in history:
-#         # If turn is a list/tuple (older Gradio format)
-#         if isinstance(turn, (list, tuple)) and len(turn) >= 2:
-#             user_msg = turn[0]
-#             ai_msg = turn[1]
-
-#         # If turn is a dict (newer Gradio format)
-#         elif isinstance(turn, dict):
-#             if turn.get("role") == "user":
-#                 user_msg = turn.get("content") or turn.get("message")
-#                 ai_msg = None
-#             elif turn.get("role") == "assistant":
-#                 user_msg = None
-#                 ai_msg = turn.get("content") or turn.get("message")
-#             else:
-#                 continue
-#         else:
-#             continue
-
-#         if user_msg:
-#             messages.append({"role": "user", "content": user_msg})
-#         if ai_msg:
-#             messages.append({"role": "assistant", "content": ai_msg})
-
-#     # Append latest user message
-#     messages.append({"role": "user", "content": message})
-
-#     # Run the agent
-#     response = await Runner.run(scholarship_agent, messages)
-#     return response.final_output
-
-
-
-
-
-
-
-
-
 import asyncio
+import re as _re
+from typing import Any, AsyncIterator, Optional
 
-from agents import Agent, Runner
+from agents import Agent, RunHooks, Runner, handoff
+from openai import AsyncOpenAI
 
+from scholarship_agents.explorer_agent import explorer_agent
 from scholarship_agents.school_domain_agent import search_agent
-from utils.analyzer import analyze_funding_pages_batch
-from utils.crawler import crawl_universities_formatted
+from utils.analyzer import analyze_crawler_results
+from utils.crawl import crawl_universities_formatted
+from utils.keyword_extractor import extract_query_keywords
 from utils.logger import logger
+
+_openai_client: AsyncOpenAI | None = None
+
+
+def _get_openai_client() -> AsyncOpenAI:
+    global _openai_client
+    if _openai_client is None:
+        _openai_client = AsyncOpenAI()
+    return _openai_client
+
 
 logger.info("Starting scholarship agent")
 
 search_agent_tool = search_agent.as_tool(
     tool_name="university_domain_search",
     tool_description="Find university domains for given schools or research topics. Call ONCE per query to get all relevant universities. Returns list of universities with their official domains.",
-    max_turns=2,
 )
 
-tools = [search_agent_tool, crawl_universities_formatted, analyze_funding_pages_batch]
+tools = [search_agent_tool, crawl_universities_formatted, analyze_crawler_results]
 
 system_prompt = """
-You are FindMyScholarship AI - an intelligent assistant that helps students discover funding opportunities.
+You are FindMyScholarship AI — you help students find university funding opportunities.
 
-APP WORKFLOW (EXECUTE ONCE, THEN STOP):
-1. USER INPUT: Student describes what they're looking for (field of study, degree level, preferred universities, etc.)
-2. DOMAIN DISCOVERY: Use the university_domain_search tool ONCE to find all relevant university websites
-   - This returns a list of universities and their domains
-   - DO NOT call this tool multiple times for the same query
-   - For broad topic queries (no explicit university names), limit to at most 5 universities
-   - If the query is too broad/ambiguous, ask the user to narrow it before deep crawling
-3. SMART CRAWLING: Use crawl_universities_formatted to search university websites
-   - CRITICAL: Call crawl_universities_formatted ONCE per batch of universities (max 3-4 per call)
-   - CRITICAL: Always pass the user's original query to the tool for keyword extraction
-   - If you have many universities, make MULTIPLE separate crawl_universities_formatted calls (one per batch)
-   - Each university returns up to 40 pages ranked by relevance (scores 5-100+)
-   - Example: For 6 universities, make 2 Crawler calls: First 3, then next 3
-   - STOP CRAWLING once all universities have been crawled
-4. ANALYZE CONTENT: Use analyze_funding_pages_batch ONCE with all crawled results
-   - Pass ALL crawler results from step 3 AND user query
-   - Analyze ONLY pages with score > 50
-   - This extracts specific scholarship names, amounts, deadlines, eligibility
-   - Returns organized, detailed funding information
-5. PRESENT RESULTS: Format and present the analyzed results to the user
-   - Group by university
-   - Highlight most relevant opportunities
-   - Include direct links
-   - THEN STOP - do not call any more tools
+WORKFLOW (run each step once, in order):
+1. DOMAINS  — call university_domain_search to get official university URLs.
+              If the query names no universities, search up to 5. If the query is
+              too vague, ask the user to narrow it before searching.
+2. CRAWL    — call crawl_universities_formatted in batches of up to 4 universities.
+              Always pass: user_query AND extracted_keywords (from [SYSTEM CONTEXT]).
+3. ANALYZE  — call analyze_crawler_results once with all crawled universities.
+              Always pass: user_query AND extracted_keywords (from [SYSTEM CONTEXT]).
+4. PRESENT  — show results grouped by university, then hand off to results_explorer.
 
-CRITICAL STOPPING RULES:
-- After step 2: DO NOT call university_domain_search again
-- After step 3: DO NOT call crawl_universities_formatted again - you already have all results
-- After step 4: DO NOT call analyze_funding_pages_batch again - analysis is complete
-- After step 5: STOP and present results - workflow is complete
-- If runtime is getting long, return partial findings from completed universities instead of starting new crawling/analysis cycles
+KEYWORDS: The user message contains a [SYSTEM CONTEXT] block with extracted_keywords.
+You MUST forward that exact list to both crawl and analyze tool calls.
 
-CONTEXT MANAGEMENT:
-- Each university returns TOP pages ranked by relevance (automatically sorted)
-- DO NOT crawl more than 3-4 universities in a single crawl_universities_formatted call
-- For broad queries without explicit university names, do not exceed 5 universities total
-- For many universities, use multiple sequential Crawler calls, then STOP
-- Only analyze pages with relevance scores > 50
-- Ignore any page ≤ 50 relevance
-
-TYPES OF FUNDING YOU CAN FIND:
-- PhD scholarships and studentships
-- Master's funding opportunities
-- Doctoral training programs
-- Research grants and fellowships
-- International student scholarships
-- Department-specific funding
-- University-wide financial aid
-
-RESPONSE GUIDELINES:
-- Start with a brief summary of what you found
-- Group results by university
-- Highlight the most relevant opportunities first (based on relevance scores)
-- Include direct links to all funding pages
-- Provide context from page previews
-- Be encouraging and helpful in tone
-- If few results found, suggest alternative searches
-
-EXAMPLE FLOW (EXECUTE ONCE, THEN STOP):
-User: "PhD funding in machine learning at MIT, Stanford, Berkeley, CMU, and Harvard"
-
-Step 1: Call university_domain_search ONCE → Returns 5 universities
-Step 2: Call crawl_universities_formatted with first 3 universities → Returns pages
-Step 3: Call crawl_universities_formatted with remaining 2 universities → Returns pages
-Step 4: Call analyze_funding_pages_batch ONCE with ALL results from steps 2-3 → Returns analyzed data
-Step 5: Present results to user → STOP (workflow complete)
-
-DO NOT:
-- Call university_domain_search again after step 1
-- Call crawl_universities_formatted again after step 3 (you already have all pages)
-- Call analyze_funding_pages_batch again after step 4 (analysis is done)
-- Loop back to any previous step
-
-REMEMBER: Execute each step ONCE, then move to the next. After presenting results, STOP.
+OUTPUT RULES:
+- Omit any field (deadline, amount, eligibility) not found — never write "Not specified"
+- Missing deadline → "→ Check the funding page for current deadlines"
+- Missing amount   → "→ Contact the department for funding details"
+- Every opportunity must end with a direct link or clear next step
+- Zero results → say so plainly and give 2-3 concrete next steps
 """
 
 scholarship_agent = Agent(
-    name="Scholarship Researcher", instructions=system_prompt, tools=tools, model="gpt-4o-mini"
+    name="Scholarship Researcher",
+    instructions=system_prompt,
+    tools=tools,
+    handoffs=[handoff(explorer_agent)],
+    model="gpt-4o-mini",
+)
+
+# Per-tool call limits enforced programmatically (not just via prompt).
+# university_domain_search: 2 — allows one retry if the first result is thin.
+# crawl_universities_formatted: 2 — supports batching across university groups.
+# analyze_crawler_results: 1 — analysis should never be repeated.
+_TOOL_MAX_CALLS: dict[str, int] = {
+    "university_domain_search": 2,
+    "crawl_universities_formatted": 2,
+    "analyze_crawler_results": 1,
+}
+
+
+# Human-readable progress labels shown in the Gradio chat bubble while the
+# agent is running. Keys match the tool names registered above.
+_TOOL_PROGRESS: dict[str, str] = {
+    "university_domain_search": "Searching for university domains...",
+    "crawl_universities_formatted": "Crawling university websites for funding pages...",
+    "analyze_crawler_results": "Analysing funding pages with AI...",
+}
+_TOOL_DONE: dict[str, str] = {
+    "university_domain_search": "University domains found.",
+    "crawl_universities_formatted": "Crawl complete.",
+    "analyze_crawler_results": "Analysis complete.",
+}
+
+
+class ToolCallGuard(RunHooks):
+    """
+    Enforces per-tool call limits AND streams progress messages into an
+    asyncio.Queue so the Gradio UI can display live status updates.
+
+    Pass a queue to enable streaming; omit it for non-streaming use.
+    """
+
+    def __init__(self, progress_queue: Optional[asyncio.Queue] = None) -> None:
+        self._counts: dict[str, int] = {}
+        self._queue = progress_queue
+
+    async def _emit(self, message: str) -> None:
+        if self._queue is not None:
+            await self._queue.put(message)
+
+    async def on_tool_start(self, context: Any, agent: Any, tool: Any) -> None:
+        name = getattr(tool, "name", str(tool))
+        self._counts[name] = self._counts.get(name, 0) + 1
+        limit = _TOOL_MAX_CALLS.get(name)
+        if limit is not None and self._counts[name] > limit:
+            logger.warning(
+                "ToolCallGuard: '%s' called %d times (max %d) — blocking call",
+                name,
+                self._counts[name],
+                limit,
+            )
+            # Mark this call as blocked so on_tool_end knows to skip the done label
+            self._blocked_calls: set = getattr(self, "_blocked_calls", set())
+            self._blocked_calls.add(name)
+            raise RuntimeError(
+                f"[LIMIT] '{name}' has already been called the maximum number of times. "
+                "Use the results you already have and proceed to the next step."
+            )
+        progress = _TOOL_PROGRESS.get(name)
+        if progress:
+            await self._emit(f"*{progress}*")
+
+    async def on_tool_end(self, context: Any, agent: Any, tool: Any, result: str) -> None:
+        name = getattr(tool, "name", str(tool))
+        done = _TOOL_DONE.get(name)
+        if done:
+            await self._emit(f"*{done}*")
+
+
+def _build_messages(
+    message: str,
+    history,
+    *,
+    use_explorer: bool = False,
+    keywords: list[str] | None = None,
+) -> list:
+    """
+    Convert Gradio history + current message into Responses API input items.
+
+    If `keywords` are provided (pre-extracted before agent run), they are
+    appended to the user message as an explicit context block.  The agent
+    reads this and MUST pass extracted_keywords to both crawl and analyze
+    tool calls — eliminating redundant in-tool extraction.
+    """
+    messages = []
+    for turn in history:
+        if isinstance(turn, (list, tuple)) and len(turn) >= 2:
+            user_msg, ai_msg = turn[0], turn[1]
+        elif isinstance(turn, dict):
+            role = turn.get("role")
+            content = (
+                turn.get("content")
+                or turn.get("message")
+                or turn.get("user")
+                or turn.get("assistant")
+            )
+            user_msg = content if role == "user" else None
+            ai_msg = content if role == "assistant" else None
+        else:
+            continue
+        if user_msg:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": str(user_msg)}],
+                }
+            )
+        if ai_msg:
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": [{"type": "output_text", "text": str(ai_msg)}],
+                }
+            )
+
+    # Append pre-extracted keywords as a mandatory context block so the agent
+    # never needs to call extract_query_keywords itself.
+    if keywords and not use_explorer:
+        kw_block = (
+            f"\n\n[SYSTEM CONTEXT — DO NOT SHOW TO USER]\n"
+            f"extracted_keywords: {keywords}\n"
+            f"IMPORTANT: Pass this exact list as the `extracted_keywords` parameter "
+            f"to BOTH crawl_universities_formatted AND analyze_crawler_results."
+        )
+        messages.append(
+            {
+                "role": "user",
+                "content": [{"type": "input_text", "text": message + kw_block}],
+            }
+        )
+    else:
+        messages.append({"role": "user", "content": [{"type": "input_text", "text": message}]})
+    return messages
+
+
+# Minimum number of distinct funding terms that must appear in an assistant message
+# for it to be treated as a completed search result (vs. error / clarifying question).
+_FUNDING_VOCABULARY = frozenset(
+    {
+        "scholarship",
+        "studentship",
+        "fellowship",
+        "bursary",
+        "grant",
+        "stipend",
+        "tuition",
+        "funded",
+        "funding",
+        "phd",
+        "doctoral",
+        "masters",
+        "postdoctoral",
+        "assistantship",
+    }
+)
+_FOLLOWUP_MIN_LENGTH = 400
+_FOLLOWUP_MIN_MARKERS = 3
+
+# Patterns that signal the user wants a NEW search, not a refinement.
+# Matched against the incoming message (lowercased) before _is_followup runs.
+_NEW_SEARCH_PATTERNS = _re.compile(
+    r"""
+    \b(university|college|institute|school)\s+of\b   # "university of X"
+    | \bat\s+(university|college|the\s+university)\b  # "at the university"
+    | \b(search|find|look)\s+(for|up|at)\b            # "search for", "find funding"
+    | \bsame\s+\w+\s+(in|at|for)\b                   # "same topic in X"
+    | \bwhat\s+about\b(?=\s+(university|college|[A-Z][a-z]+\s+university))  # "what about Oxford"
+    | \bhow\s+about\b(?=\s+(university|college|[A-Z][a-z]+\s+university))   # "how about MIT"
+    | \balso\s+(check|search|look)\b                  # "also check X"
+    | \binstead\b                                     # "search X instead"
+    | \banother\s+university\b                        # "another university"
+    | \bdifferent\s+university\b                      # "different university"
+    """,
+    _re.VERBOSE | _re.IGNORECASE,
 )
 
 
-async def chat(message, history):
+def _is_new_search(message: str) -> bool:
     """
-    Handles user input and previous chat history for FindMyScholarship AI.
-    Compatible with Gradio list or dict chat history formats.
-    """
-    messages = [{"role": "system", "content": system_prompt}]
+    Returns True when the incoming message looks like a new search request
+    rather than a follow-up question about already-returned results.
 
+    This overrides _is_followup so the full pipeline runs even when results
+    already exist in history. Examples that trigger this:
+      - "same research topic in university of alabama"
+      - "what about Oxford instead?"
+      - "search for PhD funding at Cambridge"
+      - "find funding at another university"
+    """
+    return bool(_NEW_SEARCH_PATTERNS.search(message))
+
+
+def _is_followup(history) -> bool:
+    """
+    Returns True only when a *completed* funding search result exists in history.
+
+    Two signals must both be true for any assistant message:
+    1. Length > _FOLLOWUP_MIN_LENGTH  — rules out short errors and status strings
+    2. >= _FOLLOWUP_MIN_MARKERS distinct funding terms — rules out long clarifying
+       questions, timeout messages, and tool-limit notices (none contain 3+ terms)
+
+    This prevents the explorer agent from being activated prematurely when the
+    search pipeline hasn't actually run yet.
+    """
     for turn in history:
-        # If turn is a list/tuple
+        ai_msg = None
         if isinstance(turn, (list, tuple)) and len(turn) >= 2:
-            user_msg = turn[0]
             ai_msg = turn[1]
+        elif isinstance(turn, dict) and turn.get("role") == "assistant":
+            ai_msg = turn.get("content", "")
+        if not ai_msg or len(str(ai_msg)) < _FOLLOWUP_MIN_LENGTH:
+            continue
+        text = str(ai_msg).lower()
+        if sum(1 for term in _FUNDING_VOCABULARY if term in text) >= _FOLLOWUP_MIN_MARKERS:
+            return True
+    return False
 
-        # If turn is a dict (newer Gradio format)
+
+_CLASSIFY_SYSTEM = """\
+You are an intent classifier for a scholarship-search assistant.
+
+Respond with exactly one word — either SEARCH or GENERAL — with no punctuation or explanation.
+
+SEARCH  → the user wants to find, look up, or apply for a specific scholarship, grant,
+           fellowship, or funding opportunity at a real university or in a real programme.
+           Examples: "PhD funding in AI at Oxford", "find masters scholarships in Canada",
+           "scholarships for international students in UK", "apply for Chevening".
+
+GENERAL → the user is asking a factual/informational question, wants advice, or is making
+           small talk that does NOT require crawling university websites right now.
+           Examples: "top research topics with good funding", "list universities in Sweden",
+           "what GPA do I need for Harvard?", "how do I write a personal statement?",
+           "which fields pay well?", "tell me about STEM funding trends".
+
+When in doubt, prefer GENERAL.\
+"""
+
+
+async def _classify_intent(message: str) -> bool:
+    """
+    Return True if the message is a scholarship/funding *search* request.
+    Uses a single cheap LLM call; falls back to False (general) on error.
+    """
+    try:
+        resp = await _get_openai_client().chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": _CLASSIFY_SYSTEM},
+                {"role": "user", "content": message},
+            ],
+            max_tokens=5,
+            temperature=0,
+        )
+        label = resp.choices[0].message.content.strip().upper()
+        logger.debug("Intent classification: %r → %s", message[:80], label)
+        return label == "SEARCH"
+    except Exception as exc:
+        logger.warning("Intent classification failed (%s) — defaulting to GENERAL", exc)
+        return False
+
+
+async def _answer_general_query(message: str, history) -> AsyncIterator[str]:
+    """
+    Handle non-scholarship queries with a direct LLM call.
+
+    Yields the answer incrementally (streaming) without triggering the
+    agent pipeline (no domain lookup, no crawl, no analysis).
+    """
+    system_msg = (
+        "You are FindMyScholarship AI, a helpful assistant for students. "
+        "Answer the user's question clearly and concisely. "
+        "If the question is about universities or education, provide accurate information. "
+        "If the user wants to search for scholarships or funding, let them know they can "
+        "describe what they're looking for and you'll search for opportunities."
+    )
+    messages = [{"role": "system", "content": system_msg}]
+    for turn in history:
+        if isinstance(turn, (list, tuple)) and len(turn) >= 2:
+            if turn[0]:
+                messages.append({"role": "user", "content": str(turn[0])})
+            if turn[1]:
+                messages.append({"role": "assistant", "content": str(turn[1])})
         elif isinstance(turn, dict):
-            user_msg = turn.get("user") or turn.get("message") if turn.get("role") == "user" else None
-            ai_msg = turn.get("assistant") or turn.get("message") if turn.get("role") == "assistant" else None
-
-        else:
-            continue  # skip malformed turns
-
-        if user_msg:
-            messages.append({"role": "user", "content": user_msg})
-        if ai_msg:
-            messages.append({"role": "assistant", "content": ai_msg})
-
-    # Append latest user message
+            role = turn.get("role")
+            content = turn.get("content") or ""
+            if role in ("user", "assistant") and content:
+                messages.append({"role": role, "content": str(content)})
     messages.append({"role": "user", "content": message})
 
-    # Run the agent with hard limits so UI does not appear stuck on tool loops.
+    accumulated = ""
+    stream = await _get_openai_client().chat.completions.create(
+        model="gpt-4o-mini",
+        messages=messages,
+        stream=True,
+        temperature=0.5,
+    )
+    async for chunk in stream:
+        delta = chunk.choices[0].delta.content or ""
+        if delta:
+            accumulated += delta
+            yield accumulated
+
+
+async def chat_stream(message: str, history) -> AsyncIterator[str]:
+    """
+    Streaming version of chat().
+
+    Yields incremental status strings while the agent runs tools, then
+    yields the final answer once the agent finishes.  Each yielded value
+    is the *full current* assistant bubble text (Gradio streaming convention).
+
+    Routes follow-up questions directly to explorer_agent to avoid re-crawling.
+
+    Pre-extracts keywords before the agent runs and injects them into the
+    context message so the agent always passes them to crawler and analyzer —
+    guaranteeing a single LLM extraction call per query regardless of whether
+    the model remembers to forward the parameter.
+    """
+    # Short-circuit: general informational queries are answered directly without
+    # triggering the domain-search / crawl pipeline.
+    if not _is_followup(history) and not await _classify_intent(message):
+        logger.info("No scholarship intent detected — answering directly (no agent pipeline)")
+        async for partial in _answer_general_query(message, history):
+            yield partial
+        return
+
+    # A message that looks like a new search always runs the full pipeline,
+    # even when prior results exist in history.
+    is_followup = _is_followup(history) and not _is_new_search(message)
+    active_agent = explorer_agent if is_followup else scholarship_agent
+
+    # Pre-extract keywords once for new searches so crawler + analyzer reuse them.
+    # Explorer queries skip this — they don't call any tools.
+    extracted_keywords: list[str] = []
+    if not is_followup:
+        try:
+            kw = await extract_query_keywords(message)
+            extracted_keywords = kw.all_keywords
+            logger.info("Pre-extracted keywords: %s", extracted_keywords)
+        except Exception as exc:
+            logger.warning("Keyword pre-extraction failed, agent will extract inline: %s", exc)
+
+    messages = _build_messages(
+        message, history, use_explorer=is_followup, keywords=extracted_keywords
+    )
+    progress_queue: asyncio.Queue[Optional[str]] = asyncio.Queue()
+    # Explorer has no tools so the guard is only needed for the search agent
+    guard = ToolCallGuard(progress_queue=progress_queue) if not is_followup else None
+
+    _SENTINEL = object()
+    accumulated_status: list[str] = []
+
+    if is_followup:
+        logger.info("Follow-up detected — routing to Results Explorer (no crawl)")
+
+    async def _run_agent():
+        try:
+            result = await asyncio.wait_for(
+                Runner.run(
+                    active_agent,
+                    messages,
+                    max_turns=8 if not is_followup else 3,
+                    hooks=guard,
+                ),
+                timeout=300,
+            )
+            await progress_queue.put(result.final_output)
+        except asyncio.TimeoutError:
+            logger.error("Scholarship agent timed out")
+            await progress_queue.put("The search timed out. Please try a narrower query.")
+        except RuntimeError as exc:
+            msg = str(exc)
+            if "[LIMIT]" in msg:
+                # A tool was called more times than its guard allows.
+                # The agent already gathered results; ask it to wrap up instead of crashing.
+                logger.warning("ToolCallGuard fired during streaming run: %s", msg)
+                await progress_queue.put(
+                    "The agent reached its tool-call budget. "
+                    "Please retry — if this persists, try a narrower query."
+                )
+            else:
+                logger.error("Scholarship agent runtime error: %s", exc)
+                await progress_queue.put("The search hit an internal error. Please retry.")
+        except Exception as exc:
+            logger.error("Scholarship agent failed: %s", exc)
+            await progress_queue.put("The search hit an internal error. Please retry.")
+        finally:
+            await progress_queue.put(_SENTINEL)  # type: ignore[arg-type]
+
+    agent_task = asyncio.create_task(_run_agent())
+
+    while True:
+        item = await progress_queue.get()
+        if item is _SENTINEL:
+            break
+        # Status messages (italics) are shown as a growing progress log
+        # until the final answer arrives (which replaces all of it).
+        if item and item.startswith("*") and item.endswith("*"):
+            accumulated_status.append(item)
+            yield "\n\n".join(accumulated_status)
+        else:
+            # Final answer — replace status lines with the real response
+            yield item
+
+    await agent_task
+
+
+async def chat(message: str, history) -> str:
+    """
+    Non-streaming wrapper kept for backward compatibility.
+    Returns the complete final answer string.
+    """
+    messages = _build_messages(message, history)
     try:
         response = await asyncio.wait_for(
-            Runner.run(scholarship_agent, messages, max_turns=6),
-            timeout=180,
+            Runner.run(scholarship_agent, messages, max_turns=8, hooks=ToolCallGuard()),
+            timeout=300,
         )
         return response.final_output
     except asyncio.TimeoutError:
-        logger.error("Scholarship agent timed out after 180 seconds")
+        logger.error("Scholarship agent timed out after 300 seconds")
         return (
             "The search timed out before completion. "
             "Please try a narrower query (fewer universities or a more specific field)."
         )
-    except Exception as e:
-        logger.error(f"Scholarship agent failed: {e}")
+    except RuntimeError as e:
+        if "[LIMIT]" in str(e):
+            logger.warning("ToolCallGuard fired: %s", e)
+            return (
+                "The agent reached its tool-call budget. "
+                "Please retry — if this persists, try a narrower query."
+            )
+        logger.error("Scholarship agent runtime error: %s", e)
         return (
-            "The request was too large for the current model context window. "
-            "Please retry with fewer universities or a narrower query."
+            "The search hit an internal processing error. "
+            "Please retry, and if it persists, try a narrower query."
+        )
+    except Exception as e:
+        logger.error("Scholarship agent failed: %s", e)
+        return (
+            "The search hit an internal processing error. "
+            "Please retry, and if it persists, try a narrower query."
         )

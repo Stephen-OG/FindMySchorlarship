@@ -175,6 +175,18 @@ cython_debug/
 
 .DS_Store
 
+# VS Code
+.vscode/
+
+# Runtime cache (SQLite databases)
+cache/
+*.db
+*.db-shm
+*.db-wal
+
+# Generated evaluation reports
+eval/last_report.json
+
 # Ignore Crew engineering team output
 3_crew/engineering_team/output/
 

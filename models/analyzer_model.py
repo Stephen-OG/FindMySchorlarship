@@ -22,6 +22,7 @@ class FundingOpportunity(BaseModel):
     application_process: str
     "How to apply"
 
+
 class AnalyzedFundingPage(BaseModel):
     url: str
     "Page URL"
@@ -33,6 +34,7 @@ class AnalyzedFundingPage(BaseModel):
     "Brief summary of the page"
     relevance_to_query: str
     "Relevance to user's query (High/Medium/Low)"
+
 
 class UniversityFundingAnalysis(BaseModel):
     university: str
@@ -47,6 +49,7 @@ class UniversityFundingAnalysis(BaseModel):
     "Overall summary of funding available at this university"
     best_matches: List[str]
     "Names of the top 3 most relevant opportunities for the user"
+
 
 class AnalyzerResult(BaseModel):
     universities: List[UniversityFundingAnalysis]
