@@ -13,10 +13,10 @@ load_dotenv(override=True)
 with gr.Blocks() as demo:
     gr.Markdown("# 🎓 FindMyScholarship AI")
 
-    chatbot = gr.Chatbot(label="📋 Funding Search Results", height=500, type="messages")
+    chatbot = gr.Chatbot(label="📋 Funding Search Results", height=500)
     query = gr.Textbox(
         label="🔍 What funding are you looking for?",
-        placeholder="e.g., PhD funding in machine learning at University of Exeter or UK universities",
+        placeholder="e.g., PhD funding in machine learning at University of Hertfordshire or UK universities",
     )
     search_btn = gr.Button("🚀 Search Funding")
 

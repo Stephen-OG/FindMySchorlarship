@@ -194,7 +194,7 @@ GOLDEN_CASES: List[GoldenCase] = [
         universities=["University of Melbourne"],
         country="Australia",
         expected_opps=[
-             "Investigating the epigenetic basis of monocyte exhaustion memory following sepsis",
+            "Investigating the epigenetic basis of monocyte exhaustion memory following sepsis",
             "Characterizing alcohol and stress induced changes in dorsomedial frontal cortex function",
             "Discovering lipid transport mechanisms in Mycobacterium tuberculosis",
             "Defining mechanisms for induction of antibacterial lung-resident CD4 T cells",
@@ -203,7 +203,7 @@ GOLDEN_CASES: List[GoldenCase] = [
             "Neural and Cognitive Mechanisms Underlying Perseverance and Their Disruption After Juvenile Social Play Deprivation",
             "Analyzing the Distribution, Effectiveness, and Implementation of Wildfire Smoke Exposure Reduction Strategies on Respiratory Health",
             "Understanding Multidrug-Resistant Pathogen Infections and their Treatment with Antibiotics and Bacteriophages",
-            "Mechanisms of axoglial interactions at the paranodal junction"
+            "Mechanisms of axoglial interactions at the paranodal junction",
         ],
         field_checks=[
             FieldCheck("Research Training Program", "amount", "tuition"),
@@ -359,7 +359,8 @@ GOLDEN_CASES: List[GoldenCase] = [
         mcp_tool="search_research_grants",
         mcp_level="postdoctoral",
         mcp_country="us",
-        expected_opps=[ "Investigating the epigenetic basis of monocyte exhaustion memory following sepsis",
+        expected_opps=[
+            "Investigating the epigenetic basis of monocyte exhaustion memory following sepsis",
             "Characterizing alcohol and stress induced changes in dorsomedial frontal cortex function",
             "Discovering lipid transport mechanisms in Mycobacterium tuberculosis",
             "Defining mechanisms for induction of antibacterial lung-resident CD4 T cells",
@@ -368,8 +369,9 @@ GOLDEN_CASES: List[GoldenCase] = [
             "Neural and Cognitive Mechanisms Underlying Perseverance and Their Disruption After Juvenile Social Play Deprivation",
             "Analyzing the Distribution, Effectiveness, and Implementation of Wildfire Smoke Exposure Reduction Strategies on Respiratory Health",
             "Understanding Multidrug-Resistant Pathogen Infections and their Treatment with Antibiotics and Bacteriophages",
-            "Mechanisms of axoglial interactions at the paranodal junction"],
-            notes="NIH Reporter should return biomedical postdoctoral grants",
+            "Mechanisms of axoglial interactions at the paranodal junction",
+        ],
+        notes="NIH Reporter should return biomedical postdoctoral grants",
     ),
     GoldenCase(
         id="mcp-any-phd-cs",

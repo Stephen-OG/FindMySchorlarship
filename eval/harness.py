@@ -50,8 +50,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import re
 import os
+import re
 import sys
 import time
 from dataclasses import asdict, dataclass, field
@@ -218,9 +218,7 @@ async def _judge_results(
         client = AsyncOpenAI()
         opps_text = "\n".join(f"- {o}" for o in returned_opps) if returned_opps else "(no results)"
         user_content = (
-            f"Query: {query}\n"
-            f"Country: {country or 'any'}\n\n"
-            f"Returned results:\n{opps_text}"
+            f"Query: {query}\nCountry: {country or 'any'}\n\nReturned results:\n{opps_text}"
         )
         resp = await client.chat.completions.create(
             model="gpt-4o-mini",
@@ -350,8 +348,8 @@ async def _run_university_case(
 
         try:
             from utils.analyzer import _analyze_crawler_results
-            from utils.crawler import get_cached_crawl_payload
             from utils.crawl.tools import _crawl_universities_formatted
+            from utils.crawler import get_cached_crawl_payload
             from utils.keyword_extractor import extract_query_keywords
 
             # ── Step 1: Keyword extraction ────────────────────────────────────
@@ -547,7 +545,6 @@ def _build_report(results: List[CaseResult], cached_only: bool) -> EvalReport:
 
     # Only average precision/recall/f1 over cases that have golden labels.
     scored = [r for r in results if r.has_golden_opps and r.pipeline_ok]
-    n_scored = len(scored)
 
     def avg_over(results_subset: List[CaseResult], attr: str) -> float:
         vals = [getattr(r, attr) for r in results_subset]
@@ -609,13 +606,9 @@ def _print_report(report: EvalReport) -> None:
             print(f"         ERROR: {r.error}")
         for fc in r.field_check_details:
             mark = "✓" if fc["passed"] else "✗"
-            print(
-                f"         {mark} {fc['check']}: expected={fc['expected']!r} got={fc['got']!r}"
-            )
+            print(f"         {mark} {fc['check']}: expected={fc['expected']!r} got={fc['got']!r}")
         if r.step_timings:
-            timing_parts = "  ".join(
-                f"{k}={v:.1f}s" for k, v in sorted(r.step_timings.items())
-            )
+            timing_parts = "  ".join(f"{k}={v:.1f}s" for k, v in sorted(r.step_timings.items()))
             print(f"           timings: {timing_parts}")
 
     print("=" * w)
@@ -654,18 +647,11 @@ def _compare_reports(current: EvalReport, baseline_path: str) -> None:
             continue
         delta = curr_val - base_val
         arrow = "▲" if delta > 0.001 else ("▼" if delta < -0.001 else "±")
-        print(
-            f"  {label:<20} {base_val:>9.2%} {curr_val:>9.2%}  "
-            f"{delta:+.2%} {arrow}"
-        )
+        print(f"  {label:<20} {base_val:>9.2%} {curr_val:>9.2%}  {delta:+.2%} {arrow}")
 
     # Per-case F1 deltas
-    baseline_f1: Dict[str, float] = {
-        c["case_id"]: c["f1"] for c in baseline_data.get("cases", [])
-    }
-    current_f1: Dict[str, float] = {
-        c.case_id: c.f1 for c in current.cases if c.has_golden_opps
-    }
+    baseline_f1: Dict[str, float] = {c["case_id"]: c["f1"] for c in baseline_data.get("cases", [])}
+    current_f1: Dict[str, float] = {c.case_id: c.f1 for c in current.cases if c.has_golden_opps}
 
     regressions = []
     improvements = []
